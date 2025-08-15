@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "ical": {
+      "tags": [
+        "calendar",
+        "personal"
+      ],
+      "type": "stdio",
+      "command": "/etc/profiles/per-user/ryan/bin/uv",
+      "args": [
+        "--directory",
+        "/Users/ryan/Code/github.com/Omar-V2/mcp-ical",
+        "run",
+        "mcp-ical"
+      ]
+    },
+    "searxng": {
+      "tags": [
+        "api",
+        "public"
+      ],
+      "type": "stdio",
+      "command": "/etc/profiles/per-user/ryan/bin/npx",
+      "args": [
+        "mcp-searxng-public"
+      ],
+      "env": {
+        "SEARXNG_BASE_URL": "https://metacat.online;https://nyc1.sx.ggtyler.dev;https://ooglester.com;https://search.080609.xyz;https://search.canine.tools;https://search.catboy.house;https://search.citw.lgbt;https://search.einfachzocken.eu;https://search.federicociro.com;https://search.hbubli.cc;https://search.im-in.space;https://search.indst.eu",
+        "PATH": "/Users/ryan/.nix-profile/bin:/etc/profiles/per-user/ryan/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "DEFAULT_LANGUAGE": "en"
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm:*)",
+      "Bash(mix compile)",
+      "Bash(mix test)",
+      "Bash(mix run:*)",
+      "Bash(timeout 5s mix run --no-halt)",
+      "Bash(timeout 3s mix run --no-halt)",
+      "WebFetch(domain:github.com)",
+      "Bash(lsof:*)",
+      "Bash(timeout:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(elixir:*)"
+    ],
+    "deny": []
+  }
+}

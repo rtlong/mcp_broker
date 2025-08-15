@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "echo": {
+      "type": "stdio",
+      "command": "echo",
+      "args": ["{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1}"],
+      "env": {}
+    }
+  }
+}
