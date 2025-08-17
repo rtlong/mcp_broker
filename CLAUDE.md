@@ -69,14 +69,14 @@ The broker reads from `config.json` (or path specified by `MCP_CONFIG_PATH` env 
 Just start the application - it automatically starts the MCP broker server:
 
 ```bash
-# Default usage (uses config.json, stdio transport)
+# Default usage (uses config.json, http-sse transport)
 mix run --no-halt
 
 # Custom config file
 MCP_CONFIG_PATH=/path/to/config.json mix run --no-halt
 
 # Different transport (stdio, sse, websocket)  
-MCP_TRANSPORT=sse mix run --no-halt
+MCP_TRANSPORT=stdio mix run --no-halt
 
 # Both custom config and transport
 MCP_CONFIG_PATH=/path/to/config.json MCP_TRANSPORT=websocket mix run --no-halt
