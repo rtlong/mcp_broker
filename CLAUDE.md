@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an Elixir project implementing a dynamic MCP (Model Context Protocol) broker using the Hermes MCP library. The broker can dynamically read configuration from a JSON file, connect to multiple downstream MCP servers as clients, aggregate their tools, and expose them all through a single MCP server interface with automatic name conflict resolution.
+This is an Elixir project implementing a distributed MCP (Model Context Protocol) broker using the Hermes MCP library and Erlang distribution. The broker uses a distributed architecture with:
+
+- **Main Broker Node**: Manages MCP server connections, handles permissions, and aggregates tools
+- **Client Nodes**: Lightweight BEAM processes that provide STDIO interfaces to external clients
+- **Erlang Distribution**: Native inter-node communication between client nodes and main broker
+
+This design allows multiple concurrent STDIO clients while running MCP servers only once in the main broker (crucial for macOS permission handling).
 
 ## Key Commands
 
@@ -29,19 +35,27 @@ The project follows standard Elixir/OTP patterns:
 
 ### Core Modules
 
+#### Main Broker Node
 - `McpBroker` - Main module with basic functionality
+- `McpBroker.DistributedServer` - Handles calls from distributed client nodes
 - `McpBroker.Server` - Dynamic MCP server that exposes aggregated tools
 - `McpBroker.ClientManager` - Manages multiple MCP client connections
 - `McpBroker.ToolAggregator` - Aggregates tools from all clients with conflict resolution
 - `McpBroker.Config` - Configuration loading and validation
 
-### MCP Implementation
+#### Client Node
+- `McpClient.Application` - Lightweight application for STDIO client nodes
+- `McpClient.StdioHandler` - Handles STDIO communication and proxies to distributed broker
 
-The broker uses the Hermes MCP library:
+### Distributed MCP Implementation
 
-- `McpBroker.Server` implements Hermes.Server behavior with dynamic tool registration
-- `McpBroker.ClientManager` manages multiple Hermes.Client.Base instances
-- Tools from multiple clients are aggregated and name conflicts are resolved automatically
+The broker uses Erlang distribution and the Hermes MCP library:
+
+- **Main Broker**: `McpBroker.Server` implements Hermes.Server behavior with dynamic tool registration
+- **Client Nodes**: Lightweight BEAM processes that proxy STDIO to the main broker via Erlang distribution
+- **MCP Servers**: Run only in the main broker node, handling permissions once
+- **Tool Aggregation**: Tools from multiple clients are aggregated and name conflicts are resolved automatically
+- **Distribution**: Uses `:global` process registry for broker discovery and GenServer calls for RPC
 
 ### Configuration
 
@@ -66,20 +80,17 @@ The broker reads from `config.json` (or path specified by `MCP_CONFIG_PATH` env 
 
 #### Standard Usage
 
-Just start the application - it automatically starts the MCP broker server:
+Start the main broker and connect clients via STDIO:
 
 ```bash
-# Default usage (uses config.json, http-sse transport)
-mix run --no-halt
+# Start the main broker (reads config.json by default)
+bin/start_broker
 
-# Custom config file
-MCP_CONFIG_PATH=/path/to/config.json mix run --no-halt
+# In separate terminals, start STDIO clients
+bin/mcp_client
 
-# Different transport (stdio, sse, websocket)  
-MCP_TRANSPORT=stdio mix run --no-halt
-
-# Both custom config and transport
-MCP_CONFIG_PATH=/path/to/config.json MCP_TRANSPORT=websocket mix run --no-halt
+# Custom config file for broker
+MCP_CONFIG_PATH=/path/to/config.json bin/start_broker
 ```
 
 #### Development Usage
@@ -95,13 +106,15 @@ mix compile && mix run --no-halt
 mix test
 ```
 
-The broker automatically:
+The distributed broker automatically:
 
-1. Reads MCP server configuration from config.json
-2. Connects to all configured servers as clients  
-3. Aggregates their tools with automatic name conflict resolution
-4. Starts an MCP server exposing all tools
-5. Proxies tool calls to appropriate downstream servers
+1. **Main Broker**: Reads MCP server configuration from config.json
+2. **Main Broker**: Connects to all configured servers as clients (handling permissions)
+3. **Main Broker**: Aggregates their tools with automatic name conflict resolution
+4. **Main Broker**: Registers globally for distributed client access
+5. **Client Nodes**: Start with unique node names and connect to main broker
+6. **Client Nodes**: Handle STDIO communication with external MCP clients
+7. **Client Nodes**: Proxy MCP calls to main broker via Erlang distribution
 
 ### Dependencies
 
@@ -110,10 +123,25 @@ The broker automatically:
 
 ## Project Structure
 
-- `lib/mcp_broker.ex` - Main module
-- `lib/mcp_broker/` - Core implementation modules
-- `test/` - Test files using ExUnit
-- `mix.exs` - Project configuration and dependencies
+```
+mcp_broker/
+├── lib/
+│   ├── mcp_broker.ex           # Main module
+│   ├── mcp_broker/             # Main broker implementation
+│   │   ├── application.ex      # Enhanced with distribution
+│   │   ├── distributed_server.ex  # Handles distributed calls
+│   │   ├── server.ex           # MCP server implementation
+│   │   ├── client_manager.ex   # Manages MCP client connections
+│   │   └── tool_aggregator.ex  # Tool aggregation logic
+│   └── mcp_client/             # Lightweight client app
+│       ├── application.ex      # Client node application
+│       └── stdio_handler.ex    # STDIO communication handler
+├── bin/
+│   ├── start_broker           # Start main broker script
+│   └── mcp_client            # Client launcher script
+├── test/                      # Test files using ExUnit
+└── mix.exs                   # Project configuration
+```
 
 ## Testing
 
