@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(rm:*)",
       "Bash(mix compile)",
       "Bash(mix test)",
       "Bash(mix run:*)",
@@ -9,9 +8,11 @@
       "Bash(timeout 3s mix run --no-halt)",
       "WebFetch(domain:github.com)",
       "Bash(lsof:*)",
-      "Bash(timeout:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(elixir:*)"
+      "Bash(mkdir:*)",
+      "Bash(grep:*)",
+      "Bash(tmux list-sessions:*)",
+      "Bash(tmux capture-pane:*)"
     ],
     "deny": []
   }

@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Start an MCP client that connects to the distributed broker via STDIO
+cd "$(dirname "$0")/.." || exit
+
+# Start epmd if not running (needed for distributed Erlang)
+if ! pgrep -f epmd > /dev/null; then
+    echo "Starting epmd (Erlang Port Mapper Daemon)..." >&2
+    epmd -daemon
+fi
+
+# Start the client application which will handle STDIO communication
+exec elixir --erl "+pc unicode" -e "
+# Logger.configure_backend(:console, device: :standard_error)
+# Start logger first and configure to stderr
+Application.ensure_all_started(:logger)
+
+# Compile and load modules (suppress output)
+Mix.install([{:jason, \"~> 1.4\"}], verbose: false)
+
+# Load our modules
+Code.compile_file(\"lib/mcp_client/application.ex\")
+Code.compile_file(\"lib/mcp_client/stdio_handler.ex\")
+
+# Start the client application
+Application.ensure_all_started(:crypto)
+{:ok, _} = McpClient.Application.start(:normal, [])
+
+# Keep the process alive
+Process.sleep(:infinity)
+"

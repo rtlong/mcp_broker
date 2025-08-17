@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Start the main MCP broker with distributed support
+cd "$(dirname "$0")/.."
+
+# Set default config path if not provided
+export MCP_CONFIG_PATH=${MCP_CONFIG_PATH:-"config.json"}
+
+echo "Starting MCP Broker with config: $MCP_CONFIG_PATH"
+echo "Broker will be available as distributed node: mcp_broker@localhost"
+
+# Start epmd if not running (needed for distributed Erlang)
+if ! pgrep -f epmd > /dev/null; then
+    echo "Starting epmd (Erlang Port Mapper Daemon)..."
+    epmd -daemon
+fi
+
+# Start the main broker application
+exec mix run --no-halt

@@ -7,7 +7,6 @@ defmodule McpBroker.Server do
 
   alias McpBroker.ToolAggregator
   alias Hermes.Server.{Response, Frame}
-  alias Hermes.MCP.Error
   require Logger
 
   @impl true
