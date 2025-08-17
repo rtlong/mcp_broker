@@ -11,8 +11,8 @@ fi
 
 # Start the client application which will handle STDIO communication
 exec elixir --erl "+pc unicode" -e "
-# Logger.configure_backend(:console, device: :standard_error)
-# Start logger first and configure to stderr
+# Configure Logger to stderr BEFORE starting it
+Application.put_env(:logger, :console, device: :standard_error)
 Application.ensure_all_started(:logger)
 
 # Compile and load modules (suppress output)
