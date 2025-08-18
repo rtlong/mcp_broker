@@ -36,6 +36,7 @@ The project follows standard Elixir/OTP patterns:
 ### Core Modules
 
 #### Main Broker Node
+
 - `McpBroker` - Main module with basic functionality
 - `McpBroker.DistributedServer` - Handles calls from distributed client nodes
 - `McpBroker.Server` - Dynamic MCP server that exposes aggregated tools
@@ -44,6 +45,7 @@ The project follows standard Elixir/OTP patterns:
 - `McpBroker.Config` - Configuration loading and validation
 
 #### Client Node
+
 - `McpClient.Application` - Lightweight application for STDIO client nodes
 - `McpClient.StdioHandler` - Handles STDIO communication and proxies to distributed broker
 

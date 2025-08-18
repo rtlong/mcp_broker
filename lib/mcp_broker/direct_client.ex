@@ -258,8 +258,23 @@ defmodule McpBroker.DirectClient do
     end
   end
   
-  defp handle_mcp_message(%{"error" => error}, state) do
+  defp handle_mcp_message(%{"id" => id, "error" => error}, state) do
     Logger.error("MCP error: #{inspect(error)}")
+    
+    case Map.get(state.pending_requests, id) do
+      from when is_tuple(from) ->
+        # Reply with error to pending caller
+        new_state = %{state | pending_requests: Map.delete(state.pending_requests, id)}
+        GenServer.reply(from, {:error, error})
+        {:noreply, new_state}
+      _ ->
+        new_state = %{state | pending_requests: Map.delete(state.pending_requests, id)}
+        {:noreply, new_state}
+    end
+  end
+  
+  defp handle_mcp_message(%{"error" => error}, state) do
+    Logger.error("MCP error (no ID): #{inspect(error)}")
     {:noreply, state}
   end
   

@@ -29,6 +29,19 @@
         "PATH": "/Users/ryan/.nix-profile/bin:/etc/profiles/per-user/ryan/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         "DEFAULT_LANGUAGE": "en"
       }
+    },
+    "nixos": {
+      "tags": [
+        "packages",
+        "system"
+      ],
+      "type": "stdio",
+      "command": "/run/current-system/sw/bin/nix",
+      "args": [
+        "run",
+        "github:utensils/mcp-nixos",
+        "--"
+      ]
     }
   }
 }

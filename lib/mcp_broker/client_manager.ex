@@ -20,7 +20,7 @@ defmodule McpBroker.ClientManager do
 
   @spec list_all_tools() :: {:ok, %{String.t() => [map()]}} | {:error, term()}
   def list_all_tools do
-    GenServer.call(__MODULE__, :list_all_tools)
+    GenServer.call(__MODULE__, :list_all_tools, 15_000)
   end
 
   @spec call_tool(String.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
@@ -50,12 +50,21 @@ defmodule McpBroker.ClientManager do
     result = 
       state.clients
       |> Enum.map(fn {server_name, {pid, _info}} ->
-        case DirectClient.list_tools(pid) do
-          {:ok, tools} -> 
-            Logger.debug("Got #{length(tools)} tools from #{server_name}")
-            {server_name, tools}
-          {:error, reason} -> 
-            Logger.debug("Failed to get tools from #{server_name}: #{inspect(reason)}")
+        try do
+          case DirectClient.list_tools(pid) do
+            {:ok, tools} -> 
+              Logger.debug("Got #{length(tools)} tools from #{server_name}")
+              {server_name, tools}
+            {:error, reason} -> 
+              Logger.warning("Failed to get tools from #{server_name}: #{inspect(reason)}")
+              {server_name, []}
+          end
+        catch
+          :exit, {:timeout, _} ->
+            Logger.warning("Timeout getting tools from #{server_name}")
+            {server_name, []}
+          :exit, reason ->
+            Logger.warning("Process exit getting tools from #{server_name}: #{inspect(reason)}")
             {server_name, []}
         end
       end)
