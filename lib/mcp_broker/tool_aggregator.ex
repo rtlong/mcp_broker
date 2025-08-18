@@ -10,17 +10,20 @@ defmodule McpBroker.ToolAggregator do
     description: String.t(),
     input_schema: map(),
     server_name: String.t(),
-    original_name: String.t()
+    original_name: String.t(),
+    server_tags: [String.t()]
   }
 
   @spec aggregate_tools() :: {:ok, [tool_with_source()]} | {:error, term()}
   def aggregate_tools do
-    with {:ok, server_tools} <- ClientManager.list_all_tools() do
+    with {:ok, server_tools} <- ClientManager.list_all_tools(),
+         {:ok, client_info} <- ClientManager.get_client_info() do
       tools = 
         server_tools
         |> Enum.flat_map(fn {server_name, tools} ->
+          server_tags = get_in(client_info, [server_name, :tags]) || []
           tools
-          |> Enum.map(&add_server_info(&1, server_name))
+          |> Enum.map(&add_server_info(&1, server_name, server_tags))
         end)
         |> resolve_name_conflicts()
 
@@ -36,13 +39,14 @@ defmodule McpBroker.ToolAggregator do
     end
   end
 
-  defp add_server_info(tool, server_name) do
+  defp add_server_info(tool, server_name, server_tags) do
     %{
       name: tool["name"],
       description: tool["description"],
       input_schema: simplify_schema(tool["inputSchema"] || tool["input_schema"] || %{}),
       server_name: server_name,
-      original_name: tool["name"]
+      original_name: tool["name"],
+      server_tags: server_tags
     }
   end
 
@@ -122,6 +126,14 @@ defmodule McpBroker.ToolAggregator do
         end)
 
       {:ok, formatted_tools}
+    end
+  end
+
+  @spec get_tool_server_tags(String.t()) :: {:ok, [String.t()]} | {:error, term()}
+  def get_tool_server_tags(tool_name) do
+    with {:ok, tools} <- aggregate_tools(),
+         {:ok, tool} <- find_tool(tools, tool_name) do
+      {:ok, tool.server_tags}
     end
   end
 end

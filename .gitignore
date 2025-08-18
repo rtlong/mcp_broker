@@ -21,3 +21,5 @@ mcp_broker-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+config/jwt_keys

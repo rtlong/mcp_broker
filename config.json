@@ -32,8 +32,7 @@
     },
     "nixos": {
       "tags": [
-        "packages",
-        "system"
+        "reference"
       ],
       "type": "stdio",
       "command": "/run/current-system/sw/bin/nix",

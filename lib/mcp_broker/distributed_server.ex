@@ -28,10 +28,17 @@ defmodule McpBroker.DistributedServer do
   end
 
   @doc """
+  Authenticates a client with a JWT token.
+  """
+  def authenticate_client(jwt_token, client_ref) do
+    GenServer.call({:global, :mcp_broker}, {:authenticate, jwt_token, client_ref})
+  end
+
+  @doc """
   Handles MCP calls from distributed client nodes.
   """
-  def handle_mcp_call(method, params, id \\ nil) do
-    GenServer.call({:global, :mcp_broker}, {:mcp_call, method, params, id})
+  def handle_mcp_call(method, params, id \\ nil, client_ref \\ nil) do
+    GenServer.call({:global, :mcp_broker}, {:mcp_call, method, params, id, client_ref})
   end
 
   # GenServer callbacks
@@ -55,20 +62,40 @@ defmodule McpBroker.DistributedServer do
         Logger.info("Distributed server successfully registered globally as #{inspect(pid)}")
     end
     
-    {:ok, %{}}
+    # State includes authenticated clients map
+    {:ok, %{authenticated_clients: %{}}}
   end
 
   @impl true
-  def handle_call({:mcp_call, method, params, id}, _from, state) do
-    Logger.debug("Handling MCP call: #{method}")
+  def handle_call({:authenticate, jwt_token, client_ref}, _from, state) do
+    case McpBroker.Auth.JWT.verify_token(jwt_token) do
+      {:ok, claims} ->
+        client_context = McpBroker.Auth.ClientContext.from_jwt_claims(claims)
+        new_state = put_in(state.authenticated_clients[client_ref], client_context)
+        
+        Logger.info("Client authenticated: #{McpBroker.Auth.ClientContext.to_log_string(client_context)}")
+        
+        {:reply, {:ok, client_context}, new_state}
+      
+      {:error, reason} ->
+        Logger.warning("Authentication failed for client #{client_ref}: #{inspect(reason)}")
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:mcp_call, method, params, id, client_ref}, _from, state) do
+    Logger.debug("Handling MCP call: #{method} from client #{client_ref}")
+    
+    client_context = get_in(state.authenticated_clients[client_ref])
     
     # Handle different MCP methods
     response = case method do
       "tools/list" ->
-        handle_tools_list(id)
+        handle_tools_list(id, client_context)
       
       "tools/call" ->
-        handle_tool_call(params, id)
+        handle_tool_call(params, id, client_context)
       
       "initialize" ->
         handle_initialize(params, id)
@@ -86,6 +113,12 @@ defmodule McpBroker.DistributedServer do
     end
     
     {:reply, response, state}
+  end
+
+  # Legacy handler for backwards compatibility
+  @impl true
+  def handle_call({:mcp_call, method, params, id}, from, state) do
+    handle_call({:mcp_call, method, params, id, nil}, from, state)
   end
 
   @impl true
@@ -120,8 +153,8 @@ defmodule McpBroker.DistributedServer do
     }
   end
 
-  defp handle_tools_list(id) do
-    case get_tools() do
+  defp handle_tools_list(id, client_context) do
+    case get_tools(client_context) do
       {:ok, tools} ->
         %{
           "jsonrpc" => "2.0",
@@ -150,40 +183,53 @@ defmodule McpBroker.DistributedServer do
     end
   end
 
-  defp handle_tool_call(params, id) do
+  defp handle_tool_call(params, id, client_context) do
     tool_name = Map.get(params, "name")
     arguments = Map.get(params, "arguments", %{})
     
-    case McpBroker.ToolAggregator.call_tool(tool_name, arguments) do
-      {:ok, result} ->
-        %{
-          "jsonrpc" => "2.0",
-          "id" => id,
-          "result" => %{
-            "content" => [
-              %{
-                "type" => "text",
-                "text" => format_result(result)
-              }
-            ]
-          }
+    # Check if client has access to this tool
+    if client_context && not tool_accessible_to_client?(tool_name, client_context) do
+      %{
+        "jsonrpc" => "2.0",
+        "id" => id,
+        "error" => %{
+          "code" => -32603,
+          "message" => "Access denied",
+          "data" => %{"tool" => tool_name, "reason" => "Client does not have access to this tool"}
         }
-      
-      {:error, reason} ->
-        Logger.error("Tool call failed for '#{tool_name}': #{inspect(reason)}")
-        %{
-          "jsonrpc" => "2.0",
-          "id" => id,
-          "error" => %{
-            "code" => -32603,
-            "message" => "Tool execution failed",
-            "data" => %{"tool" => tool_name, "reason" => to_string(reason)}
+      }
+    else
+      case McpBroker.ToolAggregator.call_tool(tool_name, arguments) do
+        {:ok, result} ->
+          %{
+            "jsonrpc" => "2.0",
+            "id" => id,
+            "result" => %{
+              "content" => [
+                %{
+                  "type" => "text",
+                  "text" => format_result(result)
+                }
+              ]
+            }
           }
-        }
+        
+        {:error, reason} ->
+          Logger.error("Tool call failed for '#{tool_name}': #{inspect(reason)}")
+          %{
+            "jsonrpc" => "2.0",
+            "id" => id,
+            "error" => %{
+              "code" => -32603,
+              "message" => "Tool execution failed",
+              "data" => %{"tool" => tool_name, "reason" => to_string(reason)}
+            }
+          }
+      end
     end
   end
 
-  defp get_tools do
+  defp get_tools(client_context) do
     case :ets.whereis(:mcp_broker_tools_registered) do
       :undefined ->
         {:error, "Tools not yet registered"}
@@ -191,11 +237,34 @@ defmodule McpBroker.DistributedServer do
       _table ->
         case :ets.lookup(:mcp_broker_tools_registered, :tools) do
           [{:tools, tools}] ->
-            {:ok, tools}
+            filtered_tools = if client_context do
+              filter_tools_by_client_access(tools, client_context)
+            else
+              tools
+            end
+            {:ok, filtered_tools}
           
           [] ->
             {:error, "No tools available"}
         end
+    end
+  end
+
+  defp filter_tools_by_client_access(tools, client_context) do
+    Enum.filter(tools, fn tool ->
+      tool_accessible_to_client?(tool.name, client_context)
+    end)
+  end
+
+  defp tool_accessible_to_client?(tool_name, client_context) do
+    # Get server tags for this tool
+    case McpBroker.ToolAggregator.get_tool_server_tags(tool_name) do
+      {:ok, server_tags} ->
+        McpBroker.Auth.ClientContext.has_access_to_tags?(client_context, server_tags)
+      
+      {:error, _} ->
+        # If we can't determine server tags, deny access for safety
+        false
     end
   end
 

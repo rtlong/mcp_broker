@@ -27,7 +27,8 @@ defmodule McpBroker.MixProject do
       {:hermes_mcp, "~> 0.14.0"},
       {:jason, "~> 1.4"},
       {:plug, "~> 1.18"},
-      {:plug_cowboy, "~> 2.5"}
+      {:plug_cowboy, "~> 2.5"},
+      {:joken, "~> 2.6"}
     ]
   end
 end

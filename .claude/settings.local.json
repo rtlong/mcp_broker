@@ -13,7 +13,9 @@
       "Bash(grep:*)",
       "Bash(tmux list-sessions:*)",
       "Bash(tmux capture-pane:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(mix test:*)",
+      "Bash(bin/generate_jwt:*)"
     ],
     "deny": []
   }

@@ -33,6 +33,10 @@ defmodule McpClient.StdioHandler do
   def init(state) do
     stderr_log(:info, "Starting STDIO handler")
     
+    # Load JWT token for authentication
+    jwt_token = load_jwt_token()
+    client_ref = generate_client_ref()
+    
     # Connect to main broker
     case Node.connect(@broker_node) do
       true ->
@@ -43,17 +47,24 @@ defmodule McpClient.StdioHandler do
         # Continue anyway - broker might not be ready yet
     end
     
+    # Initialize state with authentication info
+    new_state = Map.merge(state, %{
+      jwt_token: jwt_token,
+      client_ref: client_ref,
+      authenticated: false
+    })
+    
     # Start reading from STDIN in a separate process
     spawn_link(fn -> read_stdin_loop() end)
     
-    {:ok, state}
+    {:ok, new_state}
   end
 
   # Handle JSON-RPC messages from STDIN
   def handle_info({:stdin_message, message}, state) do
     case Jason.decode(message) do
       {:ok, request} ->
-        handle_mcp_request(request)
+        handle_mcp_request(request, state)
       
       {:error, reason} ->
         stderr_log(:error, "Failed to parse JSON: #{inspect(reason)}")
@@ -70,7 +81,7 @@ defmodule McpClient.StdioHandler do
 
   # Private functions
 
-  defp handle_mcp_request(%{"method" => method, "params" => params, "id" => id}) do
+  defp handle_mcp_request(%{"method" => method, "params" => params, "id" => id}, state) do
     stderr_log(:info, "Handling MCP request: #{method}")
     
     # Check if broker is available with retry
@@ -80,8 +91,11 @@ defmodule McpClient.StdioHandler do
         send_error_response(id, -32603, "Broker unavailable")
       
       _pid ->
-        # Forward to distributed broker
-        case GenServer.call({:global, :mcp_broker}, {:mcp_call, method, params, id}) do
+        # Authenticate if not already authenticated
+        authenticated_state = ensure_authenticated(state)
+        
+        # Forward to distributed broker with client reference
+        case GenServer.call({:global, :mcp_broker}, {:mcp_call, method, params, id, authenticated_state.client_ref}) do
           response when is_map(response) ->
             send_response(response)
           
@@ -100,18 +114,18 @@ defmodule McpClient.StdioHandler do
       send_error_response(id, -32603, "Internal error")
   end
 
-  defp handle_mcp_request(%{"method" => method, "params" => _params}) do
+  defp handle_mcp_request(%{"method" => method, "params" => _params}, _state) do
     # Handle notification (no id) - notifications should not receive responses!
     stderr_log(:info, "Handling notification: #{method} (no response needed)")
     :ok
   end
 
-  defp handle_mcp_request(%{"method" => method, "id" => id}) do
+  defp handle_mcp_request(%{"method" => method, "id" => id}, state) do
     # Handle request without params
-    handle_mcp_request(%{"method" => method, "params" => %{}, "id" => id})
+    handle_mcp_request(%{"method" => method, "params" => %{}, "id" => id}, state)
   end
 
-  defp handle_mcp_request(invalid_request) do
+  defp handle_mcp_request(invalid_request, _state) do
     stderr_log(:error, "Invalid JSON-RPC request: #{inspect(invalid_request)}")
     # Only send error response if we have an id (not a notification)
     case Map.get(invalid_request, "id") do
@@ -182,5 +196,87 @@ defmodule McpClient.StdioHandler do
 
   defp wait_for_broker(0) do
     :timeout
+  end
+
+  # Authentication helper functions
+
+  defp load_jwt_token do
+    # Try environment variable first
+    case System.get_env("MCP_CLIENT_JWT") do
+      nil ->
+        # Try config file
+        case load_jwt_from_config() do
+          {:ok, token} -> token
+          {:error, reason} ->
+            stderr_log(:warning, "No JWT token found: #{reason}. Running in development mode.")
+            nil
+        end
+      token when is_binary(token) ->
+        stderr_log(:info, "Loaded JWT token from MCP_CLIENT_JWT environment variable")
+        token
+    end
+  end
+
+  defp load_jwt_from_config do
+    config_path = Path.expand("~/.mcp/client.json")
+    case File.read(config_path) do
+      {:ok, content} ->
+        case Jason.decode(content) do
+          {:ok, %{"jwt" => token}} when is_binary(token) ->
+            stderr_log(:info, "Loaded JWT token from config file: #{config_path}")
+            {:ok, token}
+          {:ok, _} ->
+            {:error, "Config file missing 'jwt' field"}
+          {:error, reason} ->
+            {:error, "Invalid JSON in config file: #{reason}"}
+        end
+      {:error, :enoent} ->
+        {:error, "Config file not found at #{config_path}"}
+      {:error, reason} ->
+        {:error, "Cannot read config file: #{reason}"}
+    end
+  end
+
+  defp generate_client_ref do
+    # Generate a unique reference for this client session
+    node_name = Node.self() |> to_string()
+    timestamp = :os.system_time(:millisecond)
+    "#{node_name}_#{timestamp}"
+  end
+
+  defp ensure_authenticated(state) do
+    if state.authenticated do
+      state
+    else
+      case authenticate_with_broker(state) do
+        {:ok, new_state} -> new_state
+        {:error, reason} ->
+          stderr_log(:error, "Authentication failed: #{reason}")
+          # Return original state, calls will fail with permission errors
+          state
+      end
+    end
+  end
+
+  defp authenticate_with_broker(%{jwt_token: nil} = state) do
+    stderr_log(:warning, "No JWT token available - running in development mode without authentication")
+    # Mark as authenticated for development mode
+    {:ok, %{state | authenticated: true}}
+  end
+
+  defp authenticate_with_broker(%{jwt_token: token, client_ref: client_ref} = state) do
+    case GenServer.call({:global, :mcp_broker}, {:authenticate, token, client_ref}) do
+      {:ok, _client_context} ->
+        stderr_log(:info, "Successfully authenticated with broker")
+        {:ok, %{state | authenticated: true}}
+      
+      {:error, reason} ->
+        stderr_log(:error, "Authentication failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  catch
+    kind, reason ->
+      stderr_log(:error, "Error during authentication: #{kind} #{inspect(reason)}")
+      {:error, "Authentication call failed"}
   end
 end
