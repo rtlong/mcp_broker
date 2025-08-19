@@ -32,7 +32,7 @@ defmodule McpBroker.Application do
         end
     end
 
-    config_path = System.get_env("MCP_CONFIG_PATH", "config.json")
+    config_path = get_config_path()
 
     children =
       [
@@ -69,5 +69,12 @@ defmodule McpBroker.Application do
 
   defp get_node_cookie do
     System.get_env("MCP_BROKER_NODE_COOKIE")
+  end
+
+  defp get_config_path do
+    case Mix.env() do
+      :test -> System.get_env("MCP_CONFIG_PATH", "test_config.json")
+      _ -> System.get_env("MCP_CONFIG_PATH", "config.json")
+    end
   end
 end
