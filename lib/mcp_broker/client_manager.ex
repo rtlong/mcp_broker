@@ -47,28 +47,38 @@ defmodule McpBroker.ClientManager do
 
   @impl true
   def handle_call(:list_all_tools, _from, state) do
+    # Use Task.async_stream for concurrent client queries
     result = 
       state.clients
-      |> Enum.map(fn {server_name, {pid, _info}} ->
-        try do
-          case DirectClient.list_tools(pid) do
-            {:ok, tools} -> 
-              Logger.debug("Got #{length(tools)} tools from #{server_name}")
-              {server_name, tools}
-            {:error, reason} -> 
-              Logger.warning("Failed to get tools from #{server_name}: #{inspect(reason)}")
+      |> Task.async_stream(
+        fn {server_name, {pid, _info}} ->
+          try do
+            case DirectClient.list_tools(pid) do
+              {:ok, tools} -> 
+                Logger.debug("Got #{length(tools)} tools from #{server_name}")
+                {server_name, tools}
+              {:error, reason} -> 
+                Logger.warning("Failed to get tools from #{server_name}: #{inspect(reason)}")
+                {server_name, []}
+            end
+          catch
+            :exit, {:timeout, _} ->
+              Logger.warning("Timeout getting tools from #{server_name}")
+              {server_name, []}
+            :exit, reason ->
+              Logger.warning("Process exit getting tools from #{server_name}: #{inspect(reason)}")
               {server_name, []}
           end
-        catch
-          :exit, {:timeout, _} ->
-            Logger.warning("Timeout getting tools from #{server_name}")
-            {server_name, []}
-          :exit, reason ->
-            Logger.warning("Process exit getting tools from #{server_name}: #{inspect(reason)}")
-            {server_name, []}
-        end
+        end,
+        max_concurrency: 10,
+        timeout: 12_000
+      )
+      |> Enum.reduce(%{}, fn
+        {:ok, {server_name, tools}}, acc -> Map.put(acc, server_name, tools)
+        {:exit, reason}, acc -> 
+          Logger.warning("Task failed to list tools: #{inspect(reason)}")
+          acc
       end)
-      |> Map.new()
 
     {:reply, {:ok, result}, state}
   end
@@ -79,7 +89,7 @@ defmodule McpBroker.ClientManager do
         result = DirectClient.call_tool(pid, tool_name, arguments)
         {:reply, result, state}
       nil ->
-        {:reply, {:error, "Server '#{server_name}' not found"}, state}
+        {:reply, {:error, {:client_not_found, server_name}}, state}
     end
   end
 

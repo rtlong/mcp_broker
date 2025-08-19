@@ -1,9 +1,15 @@
 defmodule McpBroker.ToolAggregator do
   @moduledoc """
   Aggregates tools from multiple MCP clients and handles name conflicts.
+  Implements caching with TTL for performance.
   """
 
+  use GenServer
   alias McpBroker.ClientManager
+  
+  # Cache TTL in milliseconds (5 minutes)
+  @cache_ttl 5 * 60 * 1000
+  @cache_table :tool_aggregator_cache
 
   @type tool_with_source :: %{
     name: String.t(),
@@ -14,8 +20,72 @@ defmodule McpBroker.ToolAggregator do
     server_tags: [String.t()]
   }
 
+  # Public API
+
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
   @spec aggregate_tools() :: {:ok, [tool_with_source()]} | {:error, term()}
   def aggregate_tools do
+    GenServer.call(__MODULE__, :get_tools)
+  end
+
+  @spec invalidate_cache() :: :ok
+  def invalidate_cache do
+    GenServer.cast(__MODULE__, :invalidate_cache)
+  end
+
+  # GenServer callbacks
+
+  @impl true
+  def init(_opts) do
+    # Create ETS table for caching
+    :ets.new(@cache_table, [:set, :protected, :named_table])
+    {:ok, %{}}
+  end
+
+  @impl true
+  def handle_call(:get_tools, _from, state) do
+    result = get_cached_tools()
+    {:reply, result, state}
+  end
+
+  @impl true
+  def handle_cast(:invalidate_cache, state) do
+    :ets.delete_all_objects(@cache_table)
+    {:noreply, state}
+  end
+
+  # Private functions
+
+  defp get_cached_tools do
+    current_time = System.system_time(:millisecond)
+    
+    case :ets.lookup(@cache_table, :tools) do
+      [{:tools, tools, cached_at}] when current_time - cached_at < @cache_ttl ->
+        {:ok, tools}
+      
+      _ ->
+        # Cache miss or expired, refresh
+        refresh_tools_cache()
+    end
+  end
+
+  defp refresh_tools_cache do
+    case do_aggregate_tools() do
+      {:ok, tools} ->
+        # Cache the tools with timestamp
+        current_time = System.system_time(:millisecond)
+        :ets.insert(@cache_table, {:tools, tools, current_time})
+        {:ok, tools}
+      
+      error ->
+        error
+    end
+  end
+
+  defp do_aggregate_tools do
     with {:ok, server_tools} <- ClientManager.list_all_tools(),
          {:ok, client_info} <- ClientManager.get_client_info() do
       tools = 
@@ -107,7 +177,7 @@ defmodule McpBroker.ToolAggregator do
 
   defp find_tool(tools, tool_name) do
     case Enum.find(tools, &(&1.name == tool_name)) do
-      nil -> {:error, "Tool '#{tool_name}' not found"}
+      nil -> {:error, {:tool_not_found, tool_name}}
       tool -> {:ok, tool}
     end
   end

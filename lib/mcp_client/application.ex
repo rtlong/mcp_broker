@@ -5,10 +5,17 @@ defmodule McpClient.Application do
   """
   use Application
   def start(_type, _args) do
-    # Generate unique node name
+    # Generate unique node name with configurable host
     node_id = :crypto.strong_rand_bytes(8) |> Base.encode16()
-    node_name = :"mcp_client_#{node_id}@localhost"
+    host = System.get_env("MCP_CLIENT_NODE_HOST", "localhost")
+    node_name = :"mcp_client_#{node_id}@#{host}"
     os_pid = System.pid()
+    
+    # Set cookie if provided
+    cookie = System.get_env("MCP_CLIENT_NODE_COOKIE")
+    if cookie do
+      Node.set_cookie(String.to_atom(cookie))
+    end
 
     # Custom Logger-style function that guarantees stderr output
     stderr_log = fn level, message ->

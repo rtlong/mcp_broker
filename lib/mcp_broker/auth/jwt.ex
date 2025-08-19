@@ -7,14 +7,19 @@ defmodule McpBroker.Auth.JWT do
   """
 
   use Joken.Config
+  import Bitwise
 
   # Default token configuration
   @default_iss "mcp-broker"
   @default_aud "mcp-broker"
   @default_exp_seconds 30 * 24 * 60 * 60  # 30 days
 
-  # RSA key paths
-  @private_key_path Path.join([__DIR__, "..", "..", "..", "config", "jwt_keys", "private_key.pem"])
+  # RSA key paths - configurable via environment variable
+  defp get_private_key_path do
+    System.get_env("MCP_JWT_PRIVATE_KEY_PATH", 
+      Path.join([__DIR__, "..", "..", "..", "config", "jwt_keys", "private_key.pem"])
+    )
+  end
 
   @impl Joken.Config
   def token_config do
@@ -82,13 +87,39 @@ defmodule McpBroker.Auth.JWT do
   end
 
   defp read_private_key do
-    if File.exists?(@private_key_path) do
-      case File.read(@private_key_path) do
-        {:ok, content} -> {:ok, content}
-        {:error, reason} -> {:error, "Cannot read private key file: #{reason}"}
+    private_key_path = get_private_key_path()
+    
+    if File.exists?(private_key_path) do
+      case File.read(private_key_path) do
+        {:ok, content} -> 
+          # Validate file permissions for security
+          case validate_key_file_permissions(private_key_path) do
+            :ok -> {:ok, content}
+            {:error, reason} -> {:error, reason}
+          end
+        {:error, reason} -> 
+          {:error, "Cannot read private key file: #{reason}"}
       end
     else
-      {:error, "Private key file not found at #{@private_key_path}"}
+      {:error, "Private key file not found at #{private_key_path}"}
+    end
+  end
+
+  defp validate_key_file_permissions(path) do
+    case File.stat(path) do
+      {:ok, %File.Stat{mode: mode}} ->
+        # Extract permission bits (last 9 bits)
+        permissions = mode &&& 0o777
+        
+        case permissions do
+          0o600 -> :ok  # Only owner can read/write
+          0o400 -> :ok  # Only owner can read (also acceptable)
+          _ -> 
+            {:error, "Private key file has insecure permissions (#{Integer.to_string(permissions, 8)}). Expected 600 or 400."}
+        end
+      
+      {:error, reason} ->
+        {:error, "Cannot check file permissions: #{reason}"}
     end
   end
 
