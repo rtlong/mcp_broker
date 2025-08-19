@@ -203,8 +203,8 @@ defmodule McpClient.StdioHandler do
   defp load_jwt_token do
     case System.get_env("MCP_CLIENT_JWT") do
       nil ->
-        stderr_log(:warning, "No JWT token found in MCP_CLIENT_JWT environment variable. Running in development mode.")
-        nil
+        stderr_log(:error, "No JWT token found in MCP_CLIENT_JWT environment variable. Authentication is required.")
+        System.stop(1)
       token when is_binary(token) ->
         stderr_log(:info, "Loaded JWT token from MCP_CLIENT_JWT environment variable")
         token
@@ -230,12 +230,6 @@ defmodule McpClient.StdioHandler do
           state
       end
     end
-  end
-
-  defp authenticate_with_broker(%{jwt_token: nil} = state) do
-    stderr_log(:warning, "No JWT token available - running in development mode without authentication")
-    # Mark as authenticated for development mode
-    {:ok, %{state | authenticated: true}}
   end
 
   defp authenticate_with_broker(%{jwt_token: token, client_ref: client_ref} = state) do

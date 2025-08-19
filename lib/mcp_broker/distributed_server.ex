@@ -51,14 +51,14 @@ defmodule McpBroker.DistributedServer do
   Authenticates a client with a JWT token.
   """
   def authenticate_client(jwt_token, client_ref) do
-    GenServer.call({:global, :mcp_broker}, {:authenticate, jwt_token, client_ref})
+    GenServer.call({:global, get_global_name()}, {:authenticate, jwt_token, client_ref})
   end
 
   @doc """
   Handles MCP calls from distributed client nodes.
   """
   def handle_mcp_call(method, params, id \\ nil, client_ref \\ nil) do
-    GenServer.call({:global, :mcp_broker}, {:mcp_call, method, params, id, client_ref})
+    GenServer.call({:global, get_global_name()}, {:mcp_call, method, params, id, client_ref})
   end
 
   # GenServer callbacks
@@ -73,15 +73,7 @@ defmodule McpBroker.DistributedServer do
     # Trigger tool registration manually since no HTTP client will connect
     trigger_tool_registration()
     
-    # Verify global registration
-    global_name = get_global_name()
-    case :global.whereis_name(global_name) do
-      :undefined ->
-        Logger.error("CRITICAL: Distributed server not registered globally after init!")
-      
-      pid ->
-        Logger.info("Distributed server successfully registered globally as #{inspect(pid)}")
-    end
+    # Note: Global registration verification is handled in start_link/1
     
     # State includes authenticated clients map
     {:ok, %{authenticated_clients: %{}}}
@@ -110,27 +102,48 @@ defmodule McpBroker.DistributedServer do
     
     client_context = get_in(state.authenticated_clients[client_ref])
     
-    # Handle different MCP methods
-    response = case method do
-      "tools/list" ->
-        handle_tools_list(id, client_context)
-      
-      "tools/call" ->
-        handle_tool_call(params, id, client_context)
-      
-      "initialize" ->
+    # Require authentication for all methods except initialize and ping
+    response = cond do
+      method == "initialize" ->
         handle_initialize(params, id)
       
-      _ ->
-        %{
-          "jsonrpc" => "2.0",
-          "id" => id,
-          "error" => %{
-            "code" => -32601,
-            "message" => "Method not found",
-            "data" => %{"method" => method}
-          }
-        }
+      method == "ping" ->
+        handle_ping(id)
+      
+      true ->
+        case client_context do
+          nil ->
+            %{
+              "jsonrpc" => "2.0",
+              "id" => id,
+              "error" => %{
+                "code" => -32603,
+                "message" => "Authentication required",
+                "data" => %{"client_ref" => client_ref}
+              }
+            }
+          
+          _ ->
+            # Handle authenticated MCP methods
+            case method do
+              "tools/list" ->
+                handle_tools_list(id, client_context)
+              
+              "tools/call" ->
+                handle_tool_call(params, id, client_context)
+              
+              _ ->
+                %{
+                  "jsonrpc" => "2.0",
+                  "id" => id,
+                  "error" => %{
+                    "code" => -32601,
+                    "message" => "Method not found",
+                    "data" => %{"method" => method}
+                  }
+                }
+            end
+        end
     end
     
     {:reply, response, state}
@@ -171,6 +184,16 @@ defmodule McpBroker.DistributedServer do
           "version" => "0.1.0"
         }
       }
+    }
+  end
+
+  defp handle_ping(id) do
+    Logger.debug("Handling ping request")
+    
+    %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "result" => %{}
     }
   end
 
@@ -224,7 +247,7 @@ defmodule McpBroker.DistributedServer do
 
   defp execute_tool_call(tool_name, arguments, id, client_context) do
     # Check if client has access to this tool
-    if client_context && not tool_accessible_to_client?(tool_name, client_context) do
+    if not tool_accessible_to_client?(tool_name, client_context) do
       %{
         "jsonrpc" => "2.0",
         "id" => id,
@@ -274,11 +297,7 @@ defmodule McpBroker.DistributedServer do
       _table ->
         case :ets.lookup(:mcp_broker_tools_registered, :tools) do
           [{:tools, tools}] ->
-            filtered_tools = if client_context do
-              filter_tools_by_client_access(tools, client_context)
-            else
-              tools
-            end
+            filtered_tools = filter_tools_by_client_access(tools, client_context)
             {:ok, filtered_tools}
           
           [] ->
