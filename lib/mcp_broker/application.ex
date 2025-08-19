@@ -64,7 +64,18 @@ defmodule McpBroker.Application do
   defp get_node_name do
     base_name = System.get_env("MCP_BROKER_NODE_NAME", "mcp_broker")
     host = System.get_env("MCP_BROKER_NODE_HOST", "localhost")
-    String.to_atom("#{base_name}@#{host}")
+    
+    # Add unique suffix for test environment to prevent conflicts
+    name_with_suffix = case Mix.env() do
+      :test ->
+        # Generate unique suffix for each test run
+        suffix = :crypto.strong_rand_bytes(4) |> Base.encode16() |> String.downcase()
+        "#{base_name}_test_#{suffix}"
+      _ ->
+        base_name
+    end
+    
+    String.to_atom("#{name_with_suffix}@#{host}")
   end
 
   defp get_node_cookie do

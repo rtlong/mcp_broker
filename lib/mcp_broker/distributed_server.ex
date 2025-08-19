@@ -14,16 +14,36 @@ defmodule McpBroker.DistributedServer do
   Starts the distributed server and registers it globally.
   """
   def start_link(opts \\ []) do
-    Logger.info("Attempting to start distributed server with global name :mcp_broker")
-    case GenServer.start_link(__MODULE__, opts, name: {:global, :mcp_broker}) do
+    global_name = get_global_name()
+    Logger.info("Attempting to start distributed server with global name #{global_name}")
+    case GenServer.start_link(__MODULE__, opts, name: {:global, global_name}) do
       {:ok, pid} ->
         Logger.info("Successfully started distributed server with PID #{inspect(pid)}")
-        Logger.info("Global registration check: #{inspect(:global.whereis_name(:mcp_broker))}")
+        Logger.info("Global registration check: #{inspect(:global.whereis_name(global_name))}")
         {:ok, pid}
       
       error ->
         Logger.error("Failed to start distributed server: #{inspect(error)}")
         error
+    end
+  end
+
+  defp get_global_name do
+    case Mix.env() do
+      :test ->
+        # Generate unique name for each test run to prevent conflicts
+        # Use process dictionary to ensure same name across calls
+        case Process.get(:mcp_broker_global_name) do
+          nil ->
+            suffix = :crypto.strong_rand_bytes(4) |> Base.encode16() |> String.downcase()
+            name = :"mcp_broker_test_#{suffix}"
+            Process.put(:mcp_broker_global_name, name)
+            name
+          name ->
+            name
+        end
+      _ ->
+        :mcp_broker
     end
   end
 
@@ -54,7 +74,8 @@ defmodule McpBroker.DistributedServer do
     trigger_tool_registration()
     
     # Verify global registration
-    case :global.whereis_name(:mcp_broker) do
+    global_name = get_global_name()
+    case :global.whereis_name(global_name) do
       :undefined ->
         Logger.error("CRITICAL: Distributed server not registered globally after init!")
       

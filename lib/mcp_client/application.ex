@@ -8,7 +8,14 @@ defmodule McpClient.Application do
     # Generate unique node name with configurable host
     node_id = :crypto.strong_rand_bytes(8) |> Base.encode16()
     host = System.get_env("MCP_CLIENT_NODE_HOST", "localhost")
-    node_name = :"mcp_client_#{node_id}@#{host}"
+    
+    # Add environment-aware prefix for better isolation
+    prefix = case Mix.env() do
+      :test -> "mcp_client_test"
+      _ -> "mcp_client"
+    end
+    
+    node_name = :"#{prefix}_#{node_id}@#{host}"
     os_pid = System.pid()
     
     # Set cookie if provided
