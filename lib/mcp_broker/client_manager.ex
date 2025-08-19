@@ -14,8 +14,8 @@ defmodule McpBroker.ClientManager do
     config: Config.config()
   }
 
-  def start_link(config_path) do
-    GenServer.start_link(__MODULE__, config_path, name: __MODULE__)
+  def start_link(_opts \\ []) do
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @spec list_all_tools() :: {:ok, %{String.t() => [map()]}} | {:error, term()}
@@ -34,8 +34,8 @@ defmodule McpBroker.ClientManager do
   end
 
   @impl true
-  def init(config_path) do
-    with {:ok, config} <- Config.load_config(config_path),
+  def init(_opts) do
+    with {:ok, config} <- Config.load_config(),
          {:ok, clients} <- start_clients(config.servers) do
       {:ok, %{clients: clients, config: config}}
     else

@@ -1,12 +1,14 @@
 #!/bin/bash
 
 # Start the main MCP broker with distributed support
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
-# Set default config path if not provided
-export MCP_CONFIG_PATH=${MCP_CONFIG_PATH:-"config.json"}
-
-echo "Starting MCP Broker with config: $MCP_CONFIG_PATH"
+# Config path handling (now supports XDG paths)
+if [ -n "$MCP_CONFIG_PATH" ]; then
+    echo "Starting MCP Broker with config: $MCP_CONFIG_PATH"
+else
+    echo "Starting MCP Broker with XDG config path (default: ~/.config/mcp_broker/config.json)"
+fi
 echo "Broker will be available as distributed node: mcp_broker@localhost"
 
 # Check for JWT keys

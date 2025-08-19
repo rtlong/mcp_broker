@@ -6,18 +6,15 @@ cd "$(dirname "$0")/.." || exit
 # JWT Authentication Support
 # Set MCP_CLIENT_JWT environment variable to provide a JWT token for authentication
 # Example: export MCP_CLIENT_JWT="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
-# Or create a config file at ~/.mcp/client.json with: {"jwt": "your-token-here"}
 # 
 # Generate tokens using: bin/generate_jwt SUBJECT TAGS [OPTIONS]
 # Example: bin/generate_jwt claude-code "api,public,coding" --client-name "Claude Code"
 
 if [ -n "$MCP_CLIENT_JWT" ]; then
     echo "Using JWT token from MCP_CLIENT_JWT environment variable" >&2
-elif [ -f "$HOME/.mcp/client.json" ]; then
-    echo "Found client configuration at $HOME/.mcp/client.json" >&2
 else
     echo "Warning: No JWT token found. Running in development mode with all access." >&2
-    echo "To enable authentication, set MCP_CLIENT_JWT environment variable or create ~/.mcp/client.json" >&2
+    echo "To enable authentication, set MCP_CLIENT_JWT environment variable" >&2
 fi
 
 # Start epmd if not running (needed for distributed Erlang)

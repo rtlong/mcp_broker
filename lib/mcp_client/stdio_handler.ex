@@ -201,39 +201,13 @@ defmodule McpClient.StdioHandler do
   # Authentication helper functions
 
   defp load_jwt_token do
-    # Try environment variable first
     case System.get_env("MCP_CLIENT_JWT") do
       nil ->
-        # Try config file
-        case load_jwt_from_config() do
-          {:ok, token} -> token
-          {:error, reason} ->
-            stderr_log(:warning, "No JWT token found: #{reason}. Running in development mode.")
-            nil
-        end
+        stderr_log(:warning, "No JWT token found in MCP_CLIENT_JWT environment variable. Running in development mode.")
+        nil
       token when is_binary(token) ->
         stderr_log(:info, "Loaded JWT token from MCP_CLIENT_JWT environment variable")
         token
-    end
-  end
-
-  defp load_jwt_from_config do
-    config_path = Path.expand("~/.mcp/client.json")
-    case File.read(config_path) do
-      {:ok, content} ->
-        case Jason.decode(content) do
-          {:ok, %{"jwt" => token}} when is_binary(token) ->
-            stderr_log(:info, "Loaded JWT token from config file: #{config_path}")
-            {:ok, token}
-          {:ok, _} ->
-            {:error, "Config file missing 'jwt' field"}
-          {:error, reason} ->
-            {:error, "Invalid JSON in config file: #{reason}"}
-        end
-      {:error, :enoent} ->
-        {:error, "Config file not found at #{config_path}"}
-      {:error, reason} ->
-        {:error, "Cannot read config file: #{reason}"}
     end
   end
 

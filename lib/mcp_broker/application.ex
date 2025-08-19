@@ -32,14 +32,12 @@ defmodule McpBroker.Application do
         end
     end
 
-    config_path = get_config_path()
-
     children =
       [
         # Add your supervised processes here
         Hermes.Server.Registry,
         McpBroker.ToolAggregator,
-        {McpBroker.ClientManager, config_path},
+        McpBroker.ClientManager,
         %{
           id: :mcp_broker_server,
           start: {
@@ -82,10 +80,4 @@ defmodule McpBroker.Application do
     System.get_env("MCP_BROKER_NODE_COOKIE")
   end
 
-  defp get_config_path do
-    case Mix.env() do
-      :test -> System.get_env("MCP_CONFIG_PATH", "test_config.json")
-      _ -> System.get_env("MCP_CONFIG_PATH", "config.json")
-    end
-  end
 end

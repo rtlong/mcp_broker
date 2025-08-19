@@ -15,7 +15,8 @@
       "Bash(tmux capture-pane:*)",
       "Bash(git add:*)",
       "Bash(mix test:*)",
-      "Bash(bin/generate_jwt:*)"
+      "Bash(bin/generate_jwt:*)",
+      "Bash(elixir:*)"
     ],
     "deny": []
   }

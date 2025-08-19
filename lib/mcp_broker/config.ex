@@ -4,24 +4,82 @@ defmodule McpBroker.Config do
   """
 
   @type server_config :: %{
-    name: String.t(),
-    command: String.t(),
-    args: [String.t()],
-    env: %{String.t() => String.t()},
-    type: String.t(),
-    tags: [String.t()]
-  }
+          name: String.t(),
+          command: String.t(),
+          args: [String.t()],
+          env: %{String.t() => String.t()},
+          type: String.t(),
+          tags: [String.t()]
+        }
 
   @type config :: %{
-    servers: %{String.t() => server_config()}
-  }
+          servers: %{String.t() => server_config()}
+        }
 
-  @spec load_config(String.t()) :: {:ok, config()} | {:error, term()}
+  @spec load_config() :: {:ok, config()} | {:error, term()}
+  def load_config(), do: load_config(nil)
+
+  @spec load_config(String.t() | nil) :: {:ok, config()} | {:error, term()}
   def load_config(path) do
-    with {:ok, content} <- File.read(path),
+    config_path = resolve_config_path(path)
+
+    with {:ok, expanded_path} <- expand_path(config_path),
+         {:ok, content} <- File.read(expanded_path),
          {:ok, json} <- Jason.decode(content),
          {:ok, config} <- validate_config(json) do
       {:ok, config}
+    end
+  end
+
+  @spec resolve_config_path(String.t() | nil) :: String.t()
+  defp resolve_config_path(nil) do
+    System.get_env("MCP_CONFIG_PATH") || default_config_path()
+  end
+
+  defp resolve_config_path(path), do: path
+
+  @spec default_config_path() :: String.t()
+  defp default_config_path() do
+    xdg_config_home = System.get_env("XDG_CONFIG_HOME")
+
+    candidates =
+      cond do
+        xdg_config_home && xdg_config_home != "" ->
+          [Path.join([xdg_config_home, "mcp_broker", "config.json"]), "config.json"]
+
+        home = System.get_env("HOME") ->
+          [Path.join([home, ".config", "mcp_broker", "config.json"]), "config.json"]
+
+        true ->
+          ["config.json"]
+      end
+
+    # Return the first existing file, or the first candidate if none exist
+    Enum.find(candidates, &File.exists?/1) || hd(candidates)
+  end
+
+  @spec expand_path(String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  defp expand_path("~" <> rest) do
+    case System.get_env("HOME") do
+      nil -> {:error, "HOME environment variable not set"}
+      home -> {:ok, Path.join(home, rest)}
+    end
+  end
+
+  defp expand_path(path), do: {:ok, path}
+
+  @spec expand_paths_in_list([String.t()]) :: {:ok, [String.t()]} | {:error, String.t()}
+  defp expand_paths_in_list(list) do
+    list
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
+      case expand_path(item) do
+        {:ok, expanded_item} -> {:cont, {:ok, [expanded_item | acc]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, reversed_list} -> {:ok, Enum.reverse(reversed_list)}
+      error -> error
     end
   end
 
@@ -30,6 +88,7 @@ defmodule McpBroker.Config do
     case validate_servers(servers) do
       {:ok, validated_servers} ->
         {:ok, %{servers: validated_servers}}
+
       error ->
         error
     end
@@ -49,18 +108,21 @@ defmodule McpBroker.Config do
 
   defp validate_server(server, name) when is_map(server) do
     with {:ok, command} <- get_required_string(server, "command", name),
+         {:ok, expanded_command} <- expand_path(command),
          {:ok, args} <- get_optional_list(server, "args", name, []),
+         {:ok, expanded_args} <- expand_paths_in_list(args),
          {:ok, env} <- get_optional_map(server, "env", name, %{}),
          {:ok, type} <- get_optional_string(server, "type", name, "stdio"),
          {:ok, tags} <- get_optional_list(server, "tags", name, []) do
-      {:ok, %{
-        name: name,
-        command: command,
-        args: args,
-        env: env,
-        type: type,
-        tags: tags
-      }}
+      {:ok,
+       %{
+         name: name,
+         command: expanded_command,
+         args: expanded_args,
+         env: env,
+         type: type,
+         tags: tags
+       }}
     end
   end
 
@@ -89,7 +151,9 @@ defmodule McpBroker.Config do
         else
           {:error, "Server '#{name}' field '#{key}' must be array of strings"}
         end
-      _ -> {:error, "Server '#{name}' field '#{key}' must be an array"}
+
+      _ ->
+        {:error, "Server '#{name}' field '#{key}' must be an array"}
     end
   end
 
@@ -101,7 +165,9 @@ defmodule McpBroker.Config do
         else
           {:error, "Server '#{name}' field '#{key}' must be object with string values"}
         end
-      _ -> {:error, "Server '#{name}' field '#{key}' must be an object"}
+
+      _ ->
+        {:error, "Server '#{name}' field '#{key}' must be an object"}
     end
   end
 end

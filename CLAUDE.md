@@ -61,7 +61,12 @@ The broker uses Erlang distribution and the Hermes MCP library:
 
 ### Configuration
 
-The broker reads from `config.json` (or path specified by `MCP_CONFIG_PATH` env var):
+The broker reads configuration from XDG standard paths or fallback locations:
+
+1. `$XDG_CONFIG_HOME/mcp_broker/config.json` (if `XDG_CONFIG_HOME` is set)
+2. `~/.config/mcp_broker/config.json` (standard XDG location)
+3. `config.json` (current directory fallback)
+4. Custom path via `MCP_CONFIG_PATH` environment variable (overrides all above)
 
 ```json
 { 
@@ -85,7 +90,7 @@ The broker reads from `config.json` (or path specified by `MCP_CONFIG_PATH` env 
 Start the main broker and connect clients via STDIO:
 
 ```bash
-# Start the main broker (reads config.json by default)
+# Start the main broker (uses XDG config paths by default)
 bin/start_broker
 
 # In separate terminals, start STDIO clients
@@ -93,6 +98,9 @@ bin/mcp_client
 
 # Custom config file for broker
 MCP_CONFIG_PATH=/path/to/config.json bin/start_broker
+
+# Client authentication via environment variable
+MCP_CLIENT_JWT="your-jwt-token" bin/mcp_client
 ```
 
 #### Development Usage

@@ -17,7 +17,7 @@ A distributed Model Context Protocol (MCP) broker that aggregates multiple MCP s
 
 ## Quick Start
 
-1. **Configure your MCP servers** in `config.json`:
+1. **Configure your MCP servers** in your config file (see Configuration section for paths):
 
 ```json
 {
@@ -69,7 +69,7 @@ bin/mcp_client
 # Production mode with JWT token
 MCP_CLIENT_JWT="your-jwt-token-here" bin/mcp_client
 
-# Or create a config file at ~/.mcp/client.json:
+# Or create a config file at ~/.mcp_broker/client.json:
 # {"jwt": "your-jwt-token-here"}
 bin/mcp_client
 ```
@@ -163,6 +163,7 @@ Clients can provide JWT tokens via:
 ```
 
 **Client Access Examples:**
+
 - JWT with `["public"]` → Can only access `public-api` server
 - JWT with `["personal", "calendar"]` → Can only access `personal-calendar` server  
 - JWT with `["public", "coding"]` → Can access `public-api` and `development-tools`
@@ -178,9 +179,18 @@ Clients can provide JWT tokens via:
 
 ## Configuration
 
+### Config File Location
+
+The broker reads configuration from XDG standard paths or fallback locations:
+
+1. `$XDG_CONFIG_HOME/mcp_broker/config.json` (if `XDG_CONFIG_HOME` is set)
+2. `~/.config/mcp_broker/config.json` (standard XDG location)
+3. `config.json` (current directory fallback)
+4. Custom path via `MCP_CONFIG_PATH` environment variable (overrides all above)
+
 ### Environment Variables
 
-- `MCP_CONFIG_PATH`: Path to config file (default: `config.json`)
+- `MCP_CONFIG_PATH`: Custom path to config file (overrides XDG paths)
 - `MCP_CLIENT_JWT`: JWT token for client authentication
 
 ### Examples
