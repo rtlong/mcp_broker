@@ -17,8 +17,8 @@ defmodule McpBroker.IntegrationTest do
 
   describe "configuration" do
     test "loads and validates configuration" do
-      # Create a temporary config file
-      config_path = "test_config.json"
+      # Create a temporary config file with unique name
+      config_path = "temp_test_config_#{:rand.uniform(999999)}.json"
       File.write!(config_path, Jason.encode!(@test_config))
       
       try do
