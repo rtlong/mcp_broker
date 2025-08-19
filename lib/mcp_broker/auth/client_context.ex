@@ -32,17 +32,23 @@ defmodule McpBroker.Auth.ClientContext do
   @doc """
   Checks if the client has access to any of the given tags.
   
-  Returns true if the client's allowed_tags contains any of the required_tags.
+  Returns true if:
+  - The client has wildcard access ("*" in allowed_tags)
+  - The client's allowed_tags contains any of the required_tags (OR logic)
   """
   def has_access_to_tags?(%__MODULE__{allowed_tags: allowed_tags}, required_tags) when is_list(required_tags) do
-    not MapSet.disjoint?(MapSet.new(allowed_tags), MapSet.new(required_tags))
+    "*" in allowed_tags or not MapSet.disjoint?(MapSet.new(allowed_tags), MapSet.new(required_tags))
   end
 
   @doc """
   Checks if the client has access to a specific tag.
+  
+  Returns true if:
+  - The client has wildcard access ("*" in allowed_tags)
+  - The client's allowed_tags contains the specific tag
   """
   def has_access_to_tag?(%__MODULE__{allowed_tags: allowed_tags}, tag) when is_binary(tag) do
-    tag in allowed_tags
+    "*" in allowed_tags or tag in allowed_tags
   end
 
   @doc """

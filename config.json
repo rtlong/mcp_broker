@@ -41,6 +41,19 @@
         "github:utensils/mcp-nixos",
         "--"
       ]
+    },
+    "time": {
+      "tags": [
+        "public"
+      ],
+      "type": "stdio",
+      "command": "/etc/profiles/per-user/ryan/bin/uvx",
+      "args": [
+        "mcp-server-time"
+      ],
+      "env": {
+        "PATH": "/Users/ryan/.nix-profile/bin:/etc/profiles/per-user/ryan/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+      }
     }
   }
 }
