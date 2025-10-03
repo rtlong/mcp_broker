@@ -40,22 +40,29 @@ defmodule McpBroker.Config do
 
   @spec default_config_path() :: String.t()
   defp default_config_path() do
-    xdg_config_home = System.get_env("XDG_CONFIG_HOME")
+    # In test environment, use test-specific config
+    case Mix.env() do
+      :test ->
+        "test_config.json"
+      
+      _ ->
+        xdg_config_home = System.get_env("XDG_CONFIG_HOME")
 
-    candidates =
-      cond do
-        xdg_config_home && xdg_config_home != "" ->
-          [Path.join([xdg_config_home, "mcp_broker", "config.json"]), "config.json"]
+        candidates =
+          cond do
+            xdg_config_home && xdg_config_home != "" ->
+              [Path.join([xdg_config_home, "mcp_broker", "config.json"]), "config.json"]
 
-        home = System.get_env("HOME") ->
-          [Path.join([home, ".config", "mcp_broker", "config.json"]), "config.json"]
+            home = System.get_env("HOME") ->
+              [Path.join([home, ".config", "mcp_broker", "config.json"]), "config.json"]
 
-        true ->
-          ["config.json"]
-      end
+            true ->
+              ["config.json"]
+          end
 
-    # Return the first existing file, or the first candidate if none exist
-    Enum.find(candidates, &File.exists?/1) || hd(candidates)
+        # Return the first existing file, or the first candidate if none exist
+        Enum.find(candidates, &File.exists?/1) || hd(candidates)
+    end
   end
 
   @spec expand_path(String.t()) :: {:ok, String.t()} | {:error, String.t()}

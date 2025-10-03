@@ -16,7 +16,9 @@
       "Bash(git add:*)",
       "Bash(mix test:*)",
       "Bash(bin/generate_jwt:*)",
-      "Bash(elixir:*)"
+      "Bash(elixir:*)",
+      "Bash(git fetch:*)",
+      "WebFetch(domain:modelcontextprotocol.io)"
     ],
     "deny": []
   }

@@ -1,7 +1,7 @@
 defmodule McpBroker.IntegrationTest do
   use ExUnit.Case, async: false
   
-  alias McpBroker.{Config, ClientManager, ToolAggregator}
+  alias McpBroker.{Config, ToolAggregator}
 
   @test_config %{
     "mcpServers" => %{

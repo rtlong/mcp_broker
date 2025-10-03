@@ -23,17 +23,17 @@ defmodule JWTGenerator do
   defp generate_token(subject, tags) do
     # Use the same configuration as the main module
     private_key_path = Path.join([__DIR__, "..", "config", "jwt_keys", "private_key.pem"])
-    
+
     case File.read(private_key_path) do
       {:ok, private_key} ->
         signer = Joken.Signer.create("RS256", %{"pem" => private_key})
-        
+
         claims = %{
           "iss" => "mcp-broker",
-          "aud" => "mcp-broker", 
+          "aud" => "mcp-broker",
           "sub" => subject,
           "allowed_tags" => tags,
-          "exp" => DateTime.utc_now() |> DateTime.add(30 * 24 * 60 * 60) |> DateTime.to_unix(),
+          "exp" => DateTime.utc_now() |> DateTime.add(365 * 24 * 60 * 60) |> DateTime.to_unix(),
           "iat" => DateTime.utc_now() |> DateTime.to_unix()
         }
 
@@ -50,12 +50,12 @@ defmodule JWTGenerator do
             IO.puts("")
             IO.puts("You can use this token by setting the MCP_CLIENT_JWT environment variable:")
             IO.puts("export MCP_CLIENT_JWT=\"#{token}\"")
-            
+
           {:error, reason} ->
             IO.puts("Error generating token: #{inspect(reason)}")
             System.halt(1)
         end
-        
+
       {:error, reason} ->
         IO.puts("Error reading private key: #{reason}")
         IO.puts("Make sure you have generated the RSA key pair with:")
@@ -67,18 +67,18 @@ defmodule JWTGenerator do
   defp show_usage do
     IO.puts("""
     Usage: #{Path.basename(__ENV__.file)} SUBJECT TAGS
-    
+
     Generates a JWT token for MCP broker client authentication.
-    
+
     Arguments:
       SUBJECT     Client identifier (e.g., "claude-code", "cursor", "web-app")
       TAGS        Comma-separated list of allowed server tags (e.g., "api,public,coding")
-    
+
     Examples:
       #{Path.basename(__ENV__.file)} claude-code "api,public,coding"
       #{Path.basename(__ENV__.file)} cursor "api,coding"
       #{Path.basename(__ENV__.file)} web-client "public"
-    
+
     The generated token will be valid for 30 days and can be used by setting the
     MCP_CLIENT_JWT environment variable when starting the client.
     """)
