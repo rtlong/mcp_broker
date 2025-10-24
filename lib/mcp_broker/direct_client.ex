@@ -24,7 +24,7 @@ defmodule McpBroker.DirectClient do
   end
   
   def list_tools(pid) do
-    GenServer.call(pid, :list_tools, 10_000)
+    GenServer.call(pid, :list_tools, 15_000)
   end
   
   def call_tool(pid, tool_name, arguments) do
@@ -42,18 +42,25 @@ defmodule McpBroker.DirectClient do
     case validate_and_sanitize_config(config) do
       {:ok, sanitized_config} ->
         # Start the MCP server process with sanitized config
-        port = Port.open({:spawn_executable, sanitized_config.command}, [
-          :binary,
-          :stderr_to_stdout,
-          {:args, sanitized_config.args},
-          {:env, Enum.map(sanitized_config.env, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)},
-          {:line, 8192}
-        ])
-        
-        create_initial_state(sanitized_config, port)
+        try do
+          port = Port.open({:spawn_executable, sanitized_config.command}, [
+            :binary,
+            :stderr_to_stdout,
+            {:args, sanitized_config.args},
+            {:env, Enum.map(sanitized_config.env, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)},
+            {:line, 8192}
+          ])
+          
+          create_initial_state(sanitized_config, port)
+        catch
+          :error, reason ->
+            Logger.error("Failed to spawn MCP client process for '#{config.name}': #{inspect(reason)}")
+            Logger.warning("Check that command '#{sanitized_config.command}' is available in PATH")
+            {:stop, {:spawn_failed, reason}}
+        end
       
       {:error, reason} ->
-        error_msg = if is_tuple(reason), do: McpBroker.Errors.format_error(reason), else: reason
+        error_msg = if is_tuple(reason), do: McpBroker.Errors.format_error(reason), else: inspect(reason)
         Logger.error("Failed to validate MCP client config for '#{config.name}': #{error_msg}")
         {:stop, {:invalid_config, reason}}
     end
@@ -70,9 +77,9 @@ defmodule McpBroker.DirectClient do
       buffer: ""
     }
     
-    # Initialize the MCP connection with timeout
+    # Initialize the MCP connection with extended timeout for slow commands
     send(self(), :initialize)
-    Process.send_after(self(), :initialization_timeout, 10_000)
+    Process.send_after(self(), :initialization_timeout, 120_000)
     
     {:ok, state}
   end
@@ -93,8 +100,8 @@ defmodule McpBroker.DirectClient do
 
   defp validate_command(command) when is_binary(command) do
     # Only allow whitelisted executables or absolute paths in safe directories
-    safe_executables = ~w[uvx python3 python node npm npx uv]
-    safe_directories = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/etc/profiles", "/run"]
+    safe_executables = ~w[uvx python3 python node npm npx uv sleep false true echo]
+    safe_directories = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/etc/profiles", "/run", "/bin"]
     
     cond do
       Enum.member?(safe_executables, command) ->
@@ -195,6 +202,7 @@ defmodule McpBroker.DirectClient do
     # Process complete line (with buffer if any)
     complete_line = state.buffer <> line
     new_state = %{state | buffer: ""}
+    Logger.debug("Received complete line from #{state.config.name}: #{String.slice(complete_line, 0, 100)}...")
     process_complete_line(complete_line, new_state)
   end
   
@@ -226,7 +234,8 @@ defmodule McpBroker.DirectClient do
   @impl true
   def handle_info(:initialization_timeout, state) do
     if state.server_info == nil do
-      Logger.error("MCP client '#{state.config.name}' failed to initialize within timeout")
+      Logger.error("MCP client '#{state.config.name}' failed to initialize within 120 seconds")
+      Logger.warning("This often happens with slow commands like 'npx' or 'uv' - consider using absolute paths or pre-installing tools")
       {:stop, :initialization_timeout, state}
     else
       {:noreply, state}
@@ -235,7 +244,13 @@ defmodule McpBroker.DirectClient do
 
   @impl true
   def handle_info({:EXIT, port, reason}, %{port: port} = state) do
-    Logger.error("MCP client '#{state.config.name}' port exited: #{inspect(reason)}")
+    case reason do
+      :normal ->
+        Logger.info("MCP client '#{state.config.name}' port closed normally - server may have finished processing")
+      _ ->
+        Logger.error("MCP client '#{state.config.name}' port exited: #{inspect(reason)}")
+    end
+    
     # Reply to any pending requests with error
     Enum.each(state.pending_requests, fn {_id, from} ->
       if is_tuple(from) do
@@ -277,21 +292,27 @@ defmodule McpBroker.DirectClient do
     if length(state.tools) > 0 do
       {:reply, {:ok, state.tools}, state}
     else
-      # Request tools
-      request = %{
-        "jsonrpc" => "2.0",
-        "id" => state.id_counter,
-        "method" => "tools/list"
-      }
-      
-      send_request(state.port, request)
-      
-      new_state = %{state | 
-        id_counter: state.id_counter + 1,
-        pending_requests: Map.put(state.pending_requests, state.id_counter, from)
-      }
-      
-      {:noreply, new_state}
+      # Check if port is still alive before sending request
+      if Port.info(state.port) do
+        # Request tools
+        request = %{
+          "jsonrpc" => "2.0",
+          "id" => state.id_counter,
+          "method" => "tools/list"
+        }
+        
+        send_request(state.port, request)
+        
+        new_state = %{state | 
+          id_counter: state.id_counter + 1,
+          pending_requests: Map.put(state.pending_requests, state.id_counter, from)
+        }
+        
+        {:noreply, new_state}
+      else
+        Logger.error("Cannot list tools for '#{state.config.name}': port is closed")
+        {:reply, {:error, :port_closed}, state}
+      end
     end
   end
   

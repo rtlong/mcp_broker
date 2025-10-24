@@ -161,6 +161,13 @@ defmodule McpBroker.DistributedServer do
   end
 
   @impl true
+  def handle_info(:retry_tool_registration, state) do
+    Logger.info("Retrying tool registration...")
+    trigger_tool_registration()
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(msg, state) do
     Logger.debug("Received unexpected message: #{inspect(msg)}")
     {:noreply, state}
@@ -358,6 +365,8 @@ defmodule McpBroker.DistributedServer do
 
   defp trigger_tool_registration do
     Logger.info("Triggering tool registration for distributed clients")
+    # Reduced delay - try to catch clients while they're still alive
+    Process.sleep(1000)
     
     case McpBroker.ToolAggregator.aggregate_tools() do
       {:ok, tools} ->
@@ -376,7 +385,9 @@ defmodule McpBroker.DistributedServer do
         :ok
       
       {:error, reason} ->
-        Logger.error("Failed to register tools: #{inspect(reason)}")
+        Logger.warning("Failed to register tools on first attempt: #{inspect(reason)}")
+        Logger.info("Will retry tool registration in 10 seconds...")
+        Process.send_after(self(), :retry_tool_registration, 10_000)
         :error
     end
   end
